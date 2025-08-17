@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+  <record id="view_product_template_tree_shorepos" model="ir.ui.view">
+    <field name="name">product.template.tree.shorepos</field>
+    <field name="model">product.template</field>
+    <field name="inherit_id" ref="product.product_template_tree_view"/>
+    <field name="arch" type="xml">
+      <xpath expr="//tree" position="inside">
+        <field name="shorepos_store_identifier" optional="show"/>
+        <field name="shorepos_id" optional="show"/>
+        <field name="sync_to_shorepos" optional="show"/>
+      </xpath>
+    </field>
+  </record>
+</odoo>

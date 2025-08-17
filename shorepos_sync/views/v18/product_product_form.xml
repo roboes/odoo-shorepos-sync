@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+  <record id="view_product_product_form_shorepos" model="ir.ui.view">
+    <field name="name">product.product.form.shorepos</field>
+    <field name="model">product.product</field>
+    <field name="inherit_id" ref="product.product_variant_easy_edit_view"/>
+    <field name="arch" type="xml">
+      <xpath expr="//group[@name='sales'][last()]" position="after">
+        <group string="General Information" invisible="not shorepos_id">
+          <field name="shorepos_store_identifier"/>
+          <field name="shorepos_id"/>
+          <field name="odoo_to_shorepos_last_sync"/>
+        </group>
+      </xpath>
+    </field>
+  </record>
+</odoo>
