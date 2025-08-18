@@ -49,6 +49,11 @@ class ShoreposConnector(models.Model):
     settings_odoo_to_shorepos_product_variations_sync = fields.Boolean(default=True, readonly=True)
 
     # General settings
+    settings_shorepos_modified_records_import = fields.Boolean(
+        string='Import only modified records?',
+        help="If enabled, only records modified since the last import will be retrieved from Shore POS using the 'start_date' Shore POS API parameter. Only enable this option after the first import. Important: Not working on API Version 13.",
+        default=False,
+    )
     settings_shorepos_images_sync = fields.Boolean(string='Sync images?', default=True)
 
     # Stock management
@@ -595,11 +600,12 @@ class ShoreposConnector(models.Model):
         params = {}
 
         # Retrieve last sync timestamp from the log model
-        shorepos_stock_sync_log = self.env['shorepos.stock.sync.log'].search([], limit=1)
-        if shorepos_stock_sync_log:
-            params['start_date'] = (
-                f'{shorepos_stock_sync_log.odoo_shorepos_last_sync.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3]}Z'  # Has no effect on the "products" endpoint; Only supported by the "products/delta/modified" endpoint, which is unreliable with API version 13
-            )
+        if self.settings_shorepos_modified_records_import:
+            shorepos_stock_sync_log = self.env['shorepos.stock.sync.log'].search([], limit=1)
+            if shorepos_stock_sync_log:
+                params['start_date'] = (
+                    f'{shorepos_stock_sync_log.odoo_shorepos_last_sync.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3]}Z'  # Has no effect on the "products" endpoint; Only supported by the "products/delta/modified" endpoint, which is unreliable with API version 13
+                )
 
         # Fetch all products from Shore POS
         shorepos_products = self.shorepos_api_request_all(method='get', endpoint='products', params=params)
