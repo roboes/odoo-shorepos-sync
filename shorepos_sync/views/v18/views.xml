@@ -46,6 +46,7 @@
               </page>
               <page string="Sync Items">
                 <group string="General Settings">
+                  <field name="settings_shorepos_modified_records_import"/>
                   <field name="settings_shorepos_images_sync"/>
                 </group>
                 <group string="Sync Settings">
