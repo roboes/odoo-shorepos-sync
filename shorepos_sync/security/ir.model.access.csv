@@ -1,0 +1,4 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_shorepos_sync,shorepos.configuration access,model_shorepos_configuration,,1,1,1,1
+access_shorepos_sync_log,shorepos.sync.log access,model_shorepos_sync_log,,1,1,1,1
+access_shorepos_stock_sync_log,shorepos.stock.sync.log access,model_shorepos_stock_sync_log,,1,1,1,1
