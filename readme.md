@@ -43,16 +43,16 @@ python -m pip install filetype numpy opencv-python
 
 - **Sales** (`sale_management`)
   - Enable [Product Variants](https://www.odoo.com/documentation/16.0/applications/sales/sales/products_prices/products/variants.html):
-    - `Home Menu` > `Settings` > `Sales` > `Product Catalog` > Enable `Variants`.
+    - `Home Menu` → `Settings` → `Sales` → `Product Catalog` → Enable `Variants`.
 - **Inventory** (`stock`)
   - Enable Delivery Methods:
-    - `Home Menu` > `Settings` > `Inventory` > `Shipping` > Enable `Delivery Methods`.
+    - `Home Menu` → `Settings` → `Inventory` → `Shipping` → Enable `Delivery Methods`.
   - (Optional) Enable [Product Packagings](https://www.odoo.com/documentation/16.0/applications/inventory_and_mrp/inventory/product_management/configure/packaging.html):
-    - `Home Menu` > `Settings` > `Inventory` > `Products` > Enable `Product Packagings`.
+    - `Home Menu` → `Settings` → `Inventory` → `Products` → Enable `Product Packagings`.
   - Enable Units of Measure:
-    - `Home Menu` > `Settings` > `Inventory` > `Products` > Enable `Units of Measure`.
+    - `Home Menu` → `Settings` → `Inventory` → `Products` → Enable `Units of Measure`.
   - (Optional) Set up a dedicated warehouse for Shore POS sales:
-    - `Home Menu` > `Settings` > `Inventory` > `Warehouse` > Enable `Storage Locations` and configure under `Locations` the warehouse accordingly.
+    - `Home Menu` → `Settings` → `Inventory` → `Warehouse` → Enable `Storage Locations` and configure under `Locations` the warehouse accordingly.
 - **Job Queue** (`queue_job`)
   - [GitHub](https://github.com/OCA/queue/tree/16.0/queue_job) | [Odoo Apps Store](https://apps.odoo.com/apps/modules/16.0/queue_job) (requires additional [configuration instructions](https://github.com/OCA/queue/tree/16.0/queue_job#configuration)).
 
@@ -77,16 +77,16 @@ Follow these steps to install the Odoo-Shore POS Sync add-on:
 2. **Enable Odoo Add-ons:** Install and activate all [required](#odoo-add-ons-required) and, if applicable, [optional](#odoo-add-ons-optional) Odoo add-ons.
 3. **Add the Add-on:** Download and place the [`shorepos_sync`](./shorepos_sync) directory into the Odoo `addons` directory.
 4. **Activate Debug Mode:** Log in to Odoo and enable [Debug Mode](https://www.odoo.com/documentation/16.0/applications/general/developer_mode.html).
-5. **Update the Apps List:** Navigate to `Home Menu` > `Apps` and click **Update Apps List**.
+5. **Update the Apps List:** Navigate to `Home Menu` → `Apps` and click **Update Apps List**.
 6. **Activate the Add-on:** Use the filter to search for `shorepos_sync` and activate the add-on.
 
 ## Configuration
 
-The add-on is configured through the Shore POS Sync configuration, accessible via `Home Menu` > `Shore POS Sync`.
+The add-on is configured through the Shore POS Sync configuration, accessible via `Home Menu` → `Shore POS Sync`.
 
 ### Shore POS API Credentials
 
-1. Shore POS Manager > [API & Apps](https://manager.shore.com/api-apps).
+1. Shore POS Manager → [API & Apps](https://manager.shore.com/api-apps).
 2. Enter the name of your app (e.g. `Odoo`) and press on `Add App`.
 3. Press in the newly created app and press `Generate new token`.
 4. Give the access rights (read, create, update, delete) to each category accordingly.
