@@ -1,5 +1,5 @@
 ## Shore POS Tests
-# Last update: 2025-08-17
+# Last update: 2025-10-15
 
 # Token is valid for 10 hours
 
@@ -25,7 +25,7 @@ def shorepos_token_get():
     """Retrieves Shore POS access token and new refresh token."""
 
     if not settings_shorepos_api_endpoint_url or not settings_shorepos_client_id or not settings_shorepos_client_secret or not settings_shorepos_refresh_token or not settings_shorepos_timeout:
-        _logger.error('Missing Shore POS API configuration details (url, client id, client secret, refresh token or timeout). Cannot retrieve refresh token.')
+        print('Missing Shore POS API configuration details (url, client id, client secret, refresh token or timeout). Cannot retrieve refresh token.')
         return False
 
     try:
@@ -39,7 +39,7 @@ def shorepos_token_get():
         response_data = response.json()
 
     except requests.RequestException as error:
-        _logger.error('Shore POS token retrieval error: %s', error)
+        print('Shore POS token retrieval error: %s', error)
         return False
 
     shorepos_access_token = response_data.get('access_token')
