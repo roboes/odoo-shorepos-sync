@@ -18,7 +18,7 @@ The **Odoo-Shore POS Sync** add-on enables synchronization between [Shore POS](h
 
 Some features require additional setup, as detailed in the [Requirements](#requirements) section.
 
-> [!WARNING]
+> [!WARNING]  
 > This add-on is provided without any warranty and may contain bugs as it is a recently developed solution. Testing in a controlled environment is recommended before deployment, and usage is at one's own risk.
 
 ## Requirements
@@ -35,10 +35,10 @@ python -m pip install filetype numpy opencv-python
 
 #### Odoo Add-ons (Required)
 
-> [!TIP]
+> [!TIP]  
 > To automatically download and install the required and optional Odoo add-ons listed below, follow the instructions in [odoo-module-dependency-installer.md](./installation/odoo-module-dependency-installer.md).
 
-> [!TIP]
+> [!TIP]  
 > To automatically apply the Odoo configuration listed below, follow the instructions in [odoo-settings-configuration.md](./installation/odoo-settings-configuration.md).
 
 - **Sales** (`sale_management`)
