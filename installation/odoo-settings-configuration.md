@@ -1,6 +1,6 @@
 # Odoo-Shore POS Sync Odoo Settings Configuration
 
-> [!NOTE]
+> [!NOTE]  
 > Last update: 2025-08-04
 
 ## Settings

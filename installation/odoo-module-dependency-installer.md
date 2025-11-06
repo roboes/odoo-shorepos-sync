@@ -1,6 +1,6 @@
 # Odoo-Shore POS Sync Odoo Module Dependency Installer
 
-> [!NOTE]
+> [!NOTE]  
 > Last update: 2025-07-20
 
 ## Settings
