@@ -1,5 +1,5 @@
 ## Shore POS Tests
-# Last update: 2025-11-06
+# Last update: 2025-11-25
 
 # Token is valid for 10 hours
 
@@ -7,6 +7,7 @@
 from datetime import datetime, timedelta
 import os
 
+import numpy as np
 import pandas as pd
 import requests
 from requests.exceptions import HTTPError
@@ -71,6 +72,7 @@ def shorepos_api_request(method, endpoint, api_version=None, params=None, data=N
 def shorepos_api_request_all(method, endpoint, api_version=None, params=None, data=None, json=None, files=None, timeout=30):
     items_all = []
     page = 1
+    total_pages = None
 
     if params is None:
         params = {}
@@ -80,6 +82,9 @@ def shorepos_api_request_all(method, endpoint, api_version=None, params=None, da
         try:
             params['page'] = page
 
+            page_info = f' of {total_pages}' if total_pages else ''
+            print(f'Fetching page {page}{page_info}...')
+
             response = shorepos_api_request(method=method, endpoint=endpoint, api_version=api_version, params=params, data=data, json=json, files=files, timeout=timeout)
 
             if not response:
@@ -87,9 +92,19 @@ def shorepos_api_request_all(method, endpoint, api_version=None, params=None, da
 
             if isinstance(response, list):
                 items_all.extend(response)
+
+                print(f'✅ Finished. Total items collected: {len(items_all)}')
+
                 break
 
             if isinstance(response, dict):
+                if page == 1:
+                    total_count = response.get('total')
+                    if total_count is not None and isinstance(total_count, int):
+                        # Calculate total pages using ceiling division
+                        total_pages = (total_count + params['limit'] - 1) // params['limit']
+                        print(f'📚 Total records found: {total_count}. Total pages to fetch: {total_pages}.')
+
                 items = None
 
                 if 'results' in response and isinstance(response['results'], list):
@@ -101,7 +116,10 @@ def shorepos_api_request_all(method, endpoint, api_version=None, params=None, da
                 if items is not None:
                     items_all.extend(items)
 
+                    print(f'Page {page} fetched {len(items)} items. Total collected: {len(items_all)}')
+
                     if len(items) < params['limit']:
+                        print(f'✅ Finished. Detected final page with {len(items)} items. Total items collected: {len(items_all)}')
                         break
 
                     page += 1
@@ -111,7 +129,7 @@ def shorepos_api_request_all(method, endpoint, api_version=None, params=None, da
         except HTTPError as error:
             if error.response.status_code == 429:
                 retry_after = int(error.response.headers.get('Retry-After', 1))
-                _logger.warning(f'Rate limit hit, retrying after {retry_after}s...')
+                print(f'⚠️ Rate limit hit (HTTP 429), retrying after {retry_after}s...')
                 time.sleep(retry_after)
                 continue
             else:
@@ -148,6 +166,8 @@ for product in shorepos_products:
     category_ids = product.get('categories', [])
     if category_ids:
         product['categories'] = category_lookup.get(category_ids[0])
+    else:
+        product['categories'] = None
 
 
 shorepos_products_df = pd.DataFrame(data=shorepos_products, index=None, dtype='str')
@@ -216,4 +236,4 @@ shorepos_orders_df = (
 )
 
 # Delete objects
-del shorepos_categories, shorepos_products, shorepos_taxes
+# del shorepos_categories, shorepos_products, shorepos_taxes
