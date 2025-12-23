@@ -1,5 +1,5 @@
 ## Shore POS Tests
-# Last update: 2025-11-25
+# Last update: 2025-12-23
 
 # Token is valid for 10 hours
 
@@ -40,7 +40,10 @@ def shorepos_token_get():
         response_data = response.json()
 
     except requests.RequestException as error:
-        print('Shore POS token retrieval error: %s', error)
+        if error.response is not None:
+            print(f'Shore POS API Error: {error.response.status_code} - {error.response.text}')
+        else:
+            print(f'Shore POS Connection Error: {error}')
         return False
 
     shorepos_access_token = response_data.get('access_token')
@@ -164,13 +167,19 @@ for product in shorepos_products:
 
     # Replace category IDs with their names (if a product has multiple categories, only the first category is assigned)
     category_ids = product.get('categories', [])
+
+    # Save the raw category ids to a new key (as a string or list)
+    product['category_ids'] = str(category_ids) if category_ids else None
+
     if category_ids:
         product['categories'] = category_lookup.get(category_ids[0])
     else:
         product['categories'] = None
 
 
-shorepos_products_df = pd.DataFrame(data=shorepos_products, index=None, dtype='str')
+shorepos_products_df = pd.DataFrame(data=shorepos_products, index=None, dtype='str').sort_values(by=['categories', 'name'], ignore_index=True)
+
+shorepos_products_df = shorepos_products_df[['category_ids', 'categories'] + [column for column in shorepos_products_df.columns if column not in ['category_ids', 'categories']]]
 
 with pd.ExcelWriter(
     path=os.path.join(os.path.expanduser('~'), 'Downloads', 'Shore POS Products.xlsx'),
