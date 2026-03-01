@@ -1,5 +1,5 @@
 ## Shore POS Tests
-# Last update: 2025-12-23
+# Last update: 2026-03-01
 
 # Token is valid for 10 hours
 
@@ -204,9 +204,33 @@ shorepos_orders_df = (
         max_level=None,
         errors='ignore',
     )
-    .rename(columns={'order_basket.invoice_number': 'invoice_number'})
-    .astype(dtype={'original_quantity': 'float'})
-    .assign(order_completed_at=lambda row: pd.to_datetime(arg=row['order_completed_at'], utc=False, format=None))
+    .rename(
+        columns={
+            'order_basket.invoice_number': 'invoice_number',
+            'discount.id': 'discount_id',
+            'discount.amount': 'discount_amount',
+            'discount.reason': 'discount_reason',
+            'discount.type': 'discount_type',
+            'order_basket.receipt.pdf': 'order_basket_receipt_pdf',
+        }
+    )
+    .astype(
+        dtype={
+            'id': 'str',
+            'original_quantity': 'float',
+            'price': 'float',
+            'product': 'str',
+            'quantity': 'float',
+            'tax_rate': 'float',
+            'gross_price': 'float',
+            'unit_gross_price': 'float',
+            'discount_amount': 'float',
+            'order_id': 'str',
+            'order_amount_paid': 'float',
+        }
+    )
+    .assign(order_completed_at=lambda row: pd.to_datetime(arg=row['order_completed_at'], utc=True).dt.tz_localize(None))
+    .sort_values(by=['order_completed_at', 'order_id'], ignore_index=True)
 )
 
 
@@ -238,10 +262,8 @@ shorepos_orders_df = shorepos_orders_df.assign(order_state=lambda row: row['orde
 print(sorted(shorepos_orders_df['order_state'].dropna().unique()))
 
 
-shorepos_orders_df = (
-    shorepos_orders_df.filter(items=['order_completed_at', 'invoice_number', 'type', 'order_state', 'category', 'product', 'product_code', 'name', 'original_quantity', 'tax_rate', 'gross_price'])
-    .sort_values(by=['order_completed_at', 'invoice_number'], ignore_index=True)
-    .assign(original_quantity=lambda row: np.where(row['order_state'].str.contains('Canceled', na=False), -row['original_quantity'], row['original_quantity']))
+shorepos_orders_df = shorepos_orders_df.filter(items=['order_completed_at', 'invoice_number', 'type', 'order_state', 'category', 'product', 'product_code', 'name', 'original_quantity', 'tax_rate', 'gross_price']).assign(
+    original_quantity=lambda row: np.where(row['order_state'].str.contains('Canceled', na=False), -row['original_quantity'], row['original_quantity'])
 )
 
 # Delete objects
