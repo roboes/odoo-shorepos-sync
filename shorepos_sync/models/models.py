@@ -694,7 +694,7 @@ class ShoreposConnector(models.Model):
         odoo_products = self.env['product.template'].search(search_conditions) | self.env['product.product'].search(search_conditions + [('product_tmpl_id.default_code', '!=', False)]).mapped('product_tmpl_id')
 
         # Sync if modified or never synced
-        odoo_products_to_sync = odoo_products.filtered(lambda odoo_product: (not odoo_product.odoo_to_shorepos_last_sync or odoo_product.odoo_to_shorepos_last_sync < odoo_product['write_date']))
+        odoo_products_to_sync = odoo_products.filtered(lambda odoo_product: not odoo_product.odoo_to_shorepos_last_sync or odoo_product.odoo_to_shorepos_last_sync < odoo_product['write_date'])
 
         for odoo_product in odoo_products_to_sync:
             try:
