@@ -1,13 +1,11 @@
 ## Shore POS Tests
-# Last update: 2026-03-01
+# Last update: 2026-03-03
 
 # Token is valid for 10 hours
 
 # Import packages
 from datetime import datetime, timedelta
-import os
 
-import numpy as np
 import pandas as pd
 import requests
 from requests.exceptions import HTTPError
@@ -79,7 +77,7 @@ def shorepos_api_request_all(method, endpoint, api_version=None, params=None, da
 
     if params is None:
         params = {}
-    params.setdefault('limit', 100)
+    params.setdefault('limit', 40)
 
     while True:
         try:
@@ -143,52 +141,47 @@ def shorepos_api_request_all(method, endpoint, api_version=None, params=None, da
 
 settings_shorepos_access_token = shorepos_token_get()
 
-# Products
-# shorepos_products = shorepos_api_request(method='get', endpoint='products', params={'limit': 100})
-# shorepos_products = shorepos_products['results']
 
+# Categories
+shorepos_categories = shorepos_api_request_all(method='get', endpoint='categories', params={'limit': 100})
+
+shorepos_categories_name_lookup = {category['id']: category['name'] for category in shorepos_categories}
+
+shorepos_categories_lookup = {}
+for category in shorepos_categories:
+    for product_id in category.get('products', []):
+        shorepos_categories_lookup.setdefault(product_id, []).append(category['id'])
+
+
+# Taxes
+shorepos_taxes = shorepos_api_request_all(method='get', endpoint='taxes', params={'limit': 40})
+
+shorepos_taxes_lookup = {tax['id']: tax['name'] for tax in shorepos_taxes}
+
+# Products
 # shorepos_products = shorepos_api_request(method='get', endpoint='products/12345678')
 # shorepos_products = shorepos_api_request(method='get', endpoint='products/delta/modified', params={'limit': 100, 'start_date': f'{(datetime.now(timezone.utc) - timedelta(days=1)).strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]}Z', 'verbose': True}) # Endpoint has a bug with the pagination on API Version 13
+shorepos_products = shorepos_api_request_all(method='get', endpoint='products', params={'limit': 40})
 
-shorepos_products = shorepos_api_request_all(method='get', endpoint='products')
-shorepos_product = next((item for item in shorepos_products if item['id'] == 12345678), None)
-
-shorepos_taxes = shorepos_api_request_all(method='get', endpoint='taxes')
-shorepos_categories = shorepos_api_request_all(method='get', endpoint='categories')
-
-tax_lookup = {tax['id']: tax['name'] for tax in shorepos_taxes}
-category_lookup = {category['id']: category['name'] for category in shorepos_categories}
+# print(next((item for item in shorepos_products if item['id'] == 12345678), None))
 
 for product in shorepos_products:
-    # Replace tax_type ID with the corresponding name
+    # Add tax_name
     tax_id = product.get('tax_type')
-    if tax_id and tax_id in tax_lookup:
-        product['tax_type'] = tax_lookup[tax_id]
+    product['tax_name'] = shorepos_taxes_lookup.get(tax_id) if tax_id else None
 
-    # Replace category IDs with their names (if a product has multiple categories, only the first category is assigned)
-    category_ids = product.get('categories', [])
-
-    # Save the raw category ids to a new key (as a string or list)
+    # Get category IDs from the reverse lookup
+    category_ids = shorepos_categories_lookup.get(product['id'], [])
     product['category_ids'] = str(category_ids) if category_ids else None
+    product['categories'] = shorepos_categories_name_lookup.get(category_ids[0]) if category_ids else None
 
-    if category_ids:
-        product['categories'] = category_lookup.get(category_ids[0])
-    else:
-        product['categories'] = None
+shorepos_products_lookup = {str(product['id']): product.get('categories') for product in shorepos_products}
 
+# shorepos_products_df = pd.DataFrame(data=shorepos_products, index=None, dtype='str').sort_values(by=['categories', 'name'], ignore_index=True)
+# shorepos_products_df = shorepos_products_df[['category_ids', 'categories'] + [column for column in shorepos_products_df.columns if column not in ['category_ids', 'categories']]]
 
-shorepos_products_df = pd.DataFrame(data=shorepos_products, index=None, dtype='str').sort_values(by=['categories', 'name'], ignore_index=True)
-
-shorepos_products_df = shorepos_products_df[['category_ids', 'categories'] + [column for column in shorepos_products_df.columns if column not in ['category_ids', 'categories']]]
-
-with pd.ExcelWriter(
-    path=os.path.join(os.path.expanduser('~'), 'Downloads', 'Shore POS Products.xlsx'),
-    date_format='YYYY-MM-DD',
-    datetime_format='YYYY-MM-DD HH:MM:SS',
-    engine='xlsxwriter',
-    engine_kwargs={'options': {'strings_to_formulas': False, 'strings_to_urls': False}},
-) as writer:
-    shorepos_products_df.to_excel(excel_writer=writer, sheet_name='Shore POS Products', na_rep='', header=True, index=False, index_label=None, freeze_panes=(1, 0))
+# with pd.ExcelWriter(path=os.path.join(os.path.expanduser('~'), 'Downloads', 'Shore POS Products.xlsx'), date_format='YYYY-MM-DD', datetime_format='YYYY-MM-DD HH:MM:SS', engine=3 'xlsxwriter', engine_kwargs={'options': {'strings_to_formulas': False, 'strings_to_urls': False}}) as writer:
+# shorepos_products_df.to_excel(excel_writer=writer, sheet_name='Shore POS Products', na_rep='', header=True, index=False, index_label=None, freeze_panes=(1, 0))
 
 
 # Orders
@@ -233,10 +226,8 @@ shorepos_orders_df = (
     .sort_values(by=['order_completed_at', 'order_id'], ignore_index=True)
 )
 
-
 # Map product IDs to their primary category (if a product has multiple categories, only the first category is assigned)
-product_lookup = {product['id']: product.get('categories') for product in shorepos_products}
-shorepos_orders_df['category'] = shorepos_orders_df['product'].map(product_lookup)
+shorepos_orders_df['category'] = shorepos_orders_df['product'].map(shorepos_products_lookup)
 
 # Assign human-readable order state names based on Shore POS bitmask - # https://api-docs.inventorum.com/api/orders.html#order-states
 order_state_mapping = {
@@ -256,15 +247,7 @@ shorepos_orders_df['order_state'] = shorepos_orders_df['order_state'].apply(
     lambda order_state_value: ', '.join([state_info['name'] for state_flag, state_info in order_state_mapping.items() if order_state_value & state_flag])
 )
 
-shorepos_orders_df = shorepos_orders_df.assign(order_state=lambda row: row['order_state'].replace(to_replace=r'Closed, Shipped, Delivered, Paid', value=r'Completed', regex=False))
-
 # List all unique order states currently in the dataset
-print(sorted(shorepos_orders_df['order_state'].dropna().unique()))
+# print(sorted(shorepos_orders_df['order_state'].dropna().unique()))
 
-
-shorepos_orders_df = shorepos_orders_df.filter(items=['order_completed_at', 'invoice_number', 'type', 'order_state', 'category', 'product', 'product_code', 'name', 'original_quantity', 'tax_rate', 'gross_price']).assign(
-    original_quantity=lambda row: np.where(row['order_state'].str.contains('Canceled', na=False), -row['original_quantity'], row['original_quantity'])
-)
-
-# Delete objects
-# del shorepos_categories, shorepos_products, shorepos_taxes
+# shorepos_orders_df = shorepos_orders_df.filter(items=['order_completed_at', 'invoice_number', 'type', 'order_state', 'category', 'product', 'product_code', 'name', 'original_quantity', 'tax_rate', 'gross_price']).assign(original_quantity=lambda row: np.where(row['order_state'].str.contains('Canceled', na=False), -row['original_quantity'], row['original_quantity']))
