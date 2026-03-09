@@ -1,4 +1,4 @@
+from . import connector
 from . import models
-from . import shorepos_models
 
-__all__ = ['models', 'shorepos_models']
+__all__ = ['connector', 'models']

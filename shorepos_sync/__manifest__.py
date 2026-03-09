@@ -9,7 +9,7 @@
     # 'version': '16.0.0.0',
     'version': '18.0.0.0',
     'external_dependencies': {
-        'python': ['filetype', 'numpy', 'opencv-python'],
+        'python': ['filetype', 'numpy', 'opencv-python-headless'],
     },
     'depends': ['account', 'contacts', 'queue_job', 'product', 'sale_management', 'stock'],
     'data': [
