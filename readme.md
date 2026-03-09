@@ -30,7 +30,7 @@ Some features require additional setup, as detailed in the [Requirements](#requi
 Install the necessary Python packages by running:
 
 ```sh
-python -m pip install filetype numpy opencv-python
+python -m pip install filetype numpy opencv-python-headless
 ```
 
 #### Odoo Add-ons (Required)
