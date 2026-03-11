@@ -83,9 +83,9 @@ class ShoreposConnector(models.Model):
     odoo_shorepos_last_sync = fields.Datetime(string='Last Synced', compute='odoo_shorepos_last_sync_assign', store=False, readonly=True)
 
     def odoo_shorepos_last_sync_assign(self: models.Model) -> None:
-        self.ensure_one()
-        sync_log = self.env['shorepos.sync.log'].search([], limit=1)
-        self.odoo_shorepos_last_sync = sync_log.odoo_shorepos_last_sync if sync_log else False
+        for record in self:
+            sync_log = self.env['shorepos.sync.log'].search([('shorepos_connection_id', '=', record.id)], limit=1)
+            record.odoo_shorepos_last_sync = sync_log.odoo_shorepos_last_sync if sync_log else False
 
     @api.model_create_multi
     def create(self: models.Model, values_list: list[dict[str, Any]]) -> models.Model:
@@ -133,9 +133,7 @@ class ShoreposConnector(models.Model):
                 'name': f'Shore POS Auto-Sync - {self.settings_shorepos_store_identifier}',
                 'model_id': self.env['ir.model']._get(self._name).id,
                 'code': (
-                    f'model.with_context(cron_running=True).browse({self.id}).with_delay().shorepos_sync()'
-                    if self.env['ir.module.module'].search([('name', '=', 'queue_job'), ('state', '=', 'installed')], limit=1)
-                    else f'model.with_context(cron_running=True).browse({self.id}).shorepos_sync()'
+                    f'model.with_context(cron_running=True).browse({self.id}).with_delay().shorepos_sync()' if 'queue.job' in self.env else f'model.with_context(cron_running=True).browse({self.id}).shorepos_sync()'
                 ),
                 'active': self.settings_shorepos_sync_scheduled,
                 'interval_number': self.settings_shorepos_sync_scheduled_interval_minutes,
@@ -144,14 +142,12 @@ class ShoreposConnector(models.Model):
                 'doall': True,
             }
 
-        elif version_info[0] == 18:
+        elif version_info[0] in [18, 19]:
             cron_values = {
                 'name': f'Shore POS Auto-Sync - {self.settings_shorepos_store_identifier}',
                 'model_id': self.env['ir.model']._get(self._name).id,
                 'code': (
-                    f'model.with_context(cron_running=True).browse({self.id}).with_delay().shorepos_sync()'
-                    if self.env['ir.module.module'].search([('name', '=', 'queue_job'), ('state', '=', 'installed')], limit=1)
-                    else f'model.with_context(cron_running=True).browse({self.id}).shorepos_sync()'
+                    f'model.with_context(cron_running=True).browse({self.id}).with_delay().shorepos_sync()' if 'queue.job' in self.env else f'model.with_context(cron_running=True).browse({self.id}).shorepos_sync()'
                 ),
                 'active': self.settings_shorepos_sync_scheduled,
                 'interval_number': self.settings_shorepos_sync_scheduled_interval_minutes,
@@ -170,7 +166,7 @@ class ShoreposConnector(models.Model):
         _logger.info("Manual 'Sync Now' button pressed, triggering background sync.")
 
         # Run shorepos_sync in the background (requires 'queue_job' add-on)
-        if self.env['ir.module.module'].search([('name', '=', 'queue_job'), ('state', '=', 'installed')], limit=1):
+        if 'queue.job' in self.env:
             self.with_delay().shorepos_sync()
 
             return {
@@ -179,7 +175,12 @@ class ShoreposConnector(models.Model):
                 'params': {
                     'title': _('Sync Started (Queue Job)'),
                     'message': _('Shore POS sync process has been started in the background. %s'),
-                    'links': [{'label': _('Open Job Queue'), 'url': '/web#action=%d&model=queue.job&view_type=list' % self.env['ir.actions.act_window'].search([('res_model', '=', 'queue.job')], limit=1).id}],
+                    'links': [
+                        {
+                            'label': _('Open Job Queue'),
+                            'url': '/web#action=%d&model=queue.job&view_type=list' % self.env['ir.actions.act_window'].with_context(lang=False).search([('res_model', '=', 'queue.job')], limit=1).id,
+                        }
+                    ],
                     'sticky': False,
                 },
             }
@@ -202,7 +203,8 @@ class ShoreposConnector(models.Model):
 
         # Shore POS access token
         if not self.settings_shorepos_token_expiry_date or fields.Datetime.now() >= self.settings_shorepos_token_expiry_date:
-            return self.shorepos_token_get()
+            if not self.shorepos_token_get():
+                return
 
         queue_jobs_run_in_sequence = []
 
@@ -219,24 +221,26 @@ class ShoreposConnector(models.Model):
         # Stock quantity
         if self.settings_shorepos_products_stock_management:
             queue_jobs_run_in_sequence.append(self.delayable(priority=None, description=None).odoo_shorepos_products_stock_quantity_sync_batch())
-            queue_jobs_run_in_sequence.append(self.delayable(priority=None, description=None).update_sync_last_log(model_name='shorepos.stock.sync.log', field_name='odoo_shorepos_last_sync'))
+            queue_jobs_run_in_sequence.append(
+                self.delayable(priority=None, description=None).update_sync_last_log(shorepos_connection_id=self.id, model_name='shorepos.stock.sync.log', field_name='odoo_shorepos_last_sync')
+            )
 
         # Store 'odoo_shorepos_last_sync'
-        queue_jobs_run_in_sequence.append(self.delayable(priority=None, description=None).update_sync_last_log(model_name='shorepos.sync.log', field_name='odoo_shorepos_last_sync'))
+        queue_jobs_run_in_sequence.append(self.delayable(priority=None, description=None).update_sync_last_log(shorepos_connection_id=self.id, model_name='shorepos.sync.log', field_name='odoo_shorepos_last_sync'))
 
         # Create chain and delay the jobs
         if queue_jobs_run_in_sequence:
             chain(*queue_jobs_run_in_sequence).delay()
 
     @api.model
-    def update_sync_last_log(self: models.Model, model_name: str, field_name: str) -> None:
-        sync_log = self.env[model_name].search([], limit=1)
+    def update_sync_last_log(self: models.Model, shorepos_connection_id: int, model_name: str, field_name: str) -> None:
+        sync_log = self.env[model_name].search([('shorepos_connection_id', '=', shorepos_connection_id)], limit=1)
 
         if sync_log:
             sync_log.write({field_name: fields.Datetime.now()})
 
         else:
-            self.env[model_name].create({field_name: fields.Datetime.now()})
+            self.env[model_name].create({'shorepos_connection_id': shorepos_connection_id, field_name: fields.Datetime.now()})
 
     def shorepos_token_get(self: models.Model) -> bool | None:
         """Retrieves Shore POS access token and new refresh token."""
@@ -293,6 +297,8 @@ class ShoreposConnector(models.Model):
 
         _logger.info('Shore POS API connection successful')
 
+        return True
+
     def shorepos_api_request(
         self: models.Model,
         method: str,
@@ -337,7 +343,7 @@ class ShoreposConnector(models.Model):
         # Shore POS parameters
         if params is None:
             params = {}
-        params.setdefault('limit', 100)
+        params.setdefault('limit', 40)
 
         while True:
             try:
@@ -381,6 +387,46 @@ class ShoreposConnector(models.Model):
                     raise
 
         return items_all
+
+    def shorepos_package_size_value(self, product: models.Model) -> float | int | None:
+        """Returns package_size_value for a product or product variant."""
+        self.ensure_one()
+
+        value = float(product.packaging_ids[0].qty) if product.packaging_ids else 1 if (product.uom_id and product.uom_id.name == 'Units') or self.settings_shorepos_products_package_size_unit_default == 'pc' else None
+
+        return value
+
+    def shorepos_package_size_unit(self, product: models.Model) -> str | None:
+        """Returns package_size_unit for a product or product variant."""
+        self.ensure_one()
+
+        unit = (
+            'pc'
+            if product.uom_id and product.uom_id.name == 'Units'
+            else (product.uom_id.name.lower() if product.uom_id and product.uom_id.name.lower() in ['ml', 'l', 'g', 'kg', 'm', 'm2', 'm3', 'pc'] else None)
+            if self.settings_shorepos_products_package_size_unit_default == 'odoo'
+            else self.settings_shorepos_products_package_size_unit_default
+        )
+
+        return unit
+
+    def shorepos_price_untaxed(self, product: models.Model) -> float:
+        """Returns the tax-excluded unit price for a product or product variant."""
+        self.ensure_one()
+
+        return float(
+            product.taxes_id.compute_all(
+                price_unit=product.list_price,
+                currency=product.currency_id,
+                quantity=1.0,
+                product=product,
+                partner=self.env['res.partner'],
+                is_refund=False,
+                handle_price_include=True,
+                include_caba_tags=False,
+                rounding_method=None,
+            )['total_excluded']
+        )
 
     def shorepos_attributes_build(self: models.Model, odoo_product: models.Model) -> dict[str, list[str]]:
         """Builds the attributes dictionary for a simple product from Odoo's attribute lines."""
@@ -509,7 +555,7 @@ class ShoreposConnector(models.Model):
         # Store Shore POS product ID in a list after Odoo data has been pushed to Shore POS
         shorepos_product_ids_updated = {}
 
-        product_shorepos_id = int(odoo_product.shorepos_id) or int(odoo_product.product_tmpl_id.shorepos_id)
+        product_shorepos_id = odoo_product.shorepos_id or odoo_product.product_tmpl_id.shorepos_id
 
         # Determine the corresponding Shore POS stock info
         shorepos_stock_info = shorepos_products_stock_map.get(product_shorepos_id)
@@ -540,11 +586,11 @@ class ShoreposConnector(models.Model):
         shorepos_date_modified_gmt = datetime.fromisoformat(shorepos_stock_info['time_modified'])
         shorepos_date_modified_gmt = shorepos_date_modified_gmt.astimezone(UTC).replace(tzinfo=None) if isinstance(shorepos_date_modified_gmt, datetime) else fields.datetime.min
 
-        woocommerce_last_sync = getattr(odoo_product, 'woocommerce_last_sync', None)
-        woocommerce_last_sync = woocommerce_last_sync if isinstance(woocommerce_last_sync, datetime) else fields.datetime.min
+        shorepos_last_sync = getattr(odoo_product, 'shorepos_last_sync', None)
+        shorepos_last_sync = shorepos_last_sync if isinstance(shorepos_last_sync, datetime) else fields.datetime.min
 
         # Determine the latest timestamp among all sources
-        latest_timestamp = max(odoo_stock_quantity_last_update, shorepos_date_modified_gmt, woocommerce_last_sync)
+        latest_timestamp = max(odoo_stock_quantity_last_update, shorepos_date_modified_gmt, shorepos_last_sync)
 
         # If Shore POS is the most recent source of truth, update Odoo
         if latest_timestamp == shorepos_date_modified_gmt:
@@ -601,7 +647,7 @@ class ShoreposConnector(models.Model):
 
         # Retrieve last sync timestamp from the log model
         if self.settings_shorepos_modified_records_import:
-            shorepos_stock_sync_log = self.env['shorepos.stock.sync.log'].search([], limit=1)
+            shorepos_stock_sync_log = self.env['shorepos.stock.sync.log'].search([('shorepos_connection_id', '=', self.id)], limit=1)
             if shorepos_stock_sync_log:
                 params['start_date'] = (
                     f'{shorepos_stock_sync_log.odoo_shorepos_last_sync.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3]}Z'  # Has no effect on the "products" endpoint; Only supported by the "products/delta/modified" endpoint, which is unreliable with API version 13
@@ -613,25 +659,33 @@ class ShoreposConnector(models.Model):
 
         # Fetch all Odoo 'product.product' records linked to Shore POS
         if version_info[0] == 16:
-            odoo_products = self.env['product.product'].search(
-                [
-                    ('product_tmpl_id.shorepos_store_identifier', '=', self.settings_shorepos_store_identifier),
-                    ('product_tmpl_id.sync_to_shorepos', '=', True),
-                    ('product_tmpl_id.active', '=', True),
-                    ('product_tmpl_id.shorepos_id', '!=', False),
-                    ('detailed_type', '=', 'product'),
-                ]
+            odoo_products = (
+                self.env['product.product']
+                .with_context(lang=False)
+                .search(
+                    [
+                        ('product_tmpl_id.shorepos_store_identifier', '=', self.settings_shorepos_store_identifier),
+                        ('product_tmpl_id.sync_to_shorepos', '=', True),
+                        ('product_tmpl_id.active', '=', True),
+                        ('product_tmpl_id.shorepos_id', '!=', False),
+                        ('detailed_type', '=', 'product'),
+                    ]
+                )
             )
 
-        elif version_info[0] == 18:
-            odoo_products = self.env['product.product'].search(
-                [
-                    ('product_tmpl_id.shorepos_store_identifier', '=', self.settings_shorepos_store_identifier),
-                    ('product_tmpl_id.sync_to_shorepos', '=', True),
-                    ('product_tmpl_id.active', '=', True),
-                    ('product_tmpl_id.shorepos_id', '!=', False),
-                    ('is_storable', '=', True),
-                ]
+        elif version_info[0] in [18, 19]:
+            odoo_products = (
+                self.env['product.product']
+                .with_context(lang=False)
+                .search(
+                    [
+                        ('product_tmpl_id.shorepos_store_identifier', '=', self.settings_shorepos_store_identifier),
+                        ('product_tmpl_id.sync_to_shorepos', '=', True),
+                        ('product_tmpl_id.active', '=', True),
+                        ('product_tmpl_id.shorepos_id', '!=', False),
+                        ('is_storable', '=', True),
+                    ]
+                )
             )
 
         shorepos_product_ids_updated = {}
@@ -656,11 +710,13 @@ class ShoreposConnector(models.Model):
 
     @api.model
     def odoo_to_shorepos_products_delete(self: models.Model) -> None:
+        self.ensure_one()
+
         # Odoo search conditions
         search_conditions = [('shorepos_store_identifier', '=', self.settings_shorepos_store_identifier), ('sync_to_shorepos', '=', False), ('shorepos_id', '!=', False)]
 
         # Odoo products
-        odoo_products = self.env['product.template'].search(search_conditions)
+        odoo_products = self.env['product.template'].with_context(lang=False).search(search_conditions)
 
         for odoo_product in odoo_products:
             try:
@@ -684,6 +740,8 @@ class ShoreposConnector(models.Model):
 
     @api.model
     def odoo_to_shorepos_products_sync(self: models.Model) -> None:
+        self.ensure_one()
+
         # Odoo search conditions
         search_conditions = [('sync_to_shorepos', '=', True), ('active', '=', True), ('default_code', '!=', False)]
 
@@ -691,7 +749,9 @@ class ShoreposConnector(models.Model):
             search_conditions.append(('product_language_code', '=', self.settings_shorepos_odoo_to_shorepos_products_language_code))
 
         # Odoo products
-        odoo_products = self.env['product.template'].search(search_conditions) | self.env['product.product'].search(search_conditions + [('product_tmpl_id.default_code', '!=', False)]).mapped('product_tmpl_id')
+        odoo_products = self.env['product.template'].with_context(lang=False).search(search_conditions) | self.env['product.product'].with_context(lang=False).search(
+            search_conditions + [('product_tmpl_id.default_code', '!=', False)]
+        ).mapped('product_tmpl_id')
 
         # Sync if modified or never synced
         odoo_products_to_sync = odoo_products.filtered(lambda odoo_product: not odoo_product.odoo_to_shorepos_last_sync or odoo_product.odoo_to_shorepos_last_sync < odoo_product['write_date'])
@@ -725,19 +785,7 @@ class ShoreposConnector(models.Model):
                     'product_code': odoo_product.default_code or '',
                     'ean': odoo_product.default_code or '',
                     'gtin': odoo_product.default_code or '',
-                    'price': float(
-                        odoo_product.taxes_id.compute_all(
-                            price_unit=odoo_product.list_price,
-                            currency=odoo_product.currency_id,
-                            quantity=1.0,
-                            product=odoo_product,
-                            partner=self.env['res.partner'],
-                            is_refund=False,
-                            handle_price_include=True,
-                            include_caba_tags=False,
-                            rounding_method=None,
-                        )['total_excluded']
-                    ),
+                    'price': self.shorepos_price_untaxed(odoo_product),
                     'purchase_price': float(odoo_product.standard_price),
                     'custom_price': False,
                     'tax_type': self.shorepos_tax_rate_create_or_retrieve(odoo_product.taxes_id[0].amount) if odoo_product.taxes_id else None,
@@ -745,20 +793,8 @@ class ShoreposConnector(models.Model):
                     'attributes': {},
                     'categories': categories or None,
                     'images': [{'id': shorepos_image_id, 'new': True}] if shorepos_image_id else None,
-                    'package_size_value': (
-                        float(odoo_product.packaging_ids[0].qty)
-                        if odoo_product.packaging_ids
-                        else 1
-                        if (odoo_product.uom_id and odoo_product.uom_id.name == 'Units') or self.settings_shorepos_products_package_size_unit_default == 'pc'
-                        else None
-                    ),
-                    'package_size_unit': (
-                        'pc'
-                        if odoo_product.uom_id and odoo_product.uom_id.name == 'Units'
-                        else (odoo_product.uom_id.name.lower() if odoo_product.uom_id and odoo_product.uom_id.name.lower() in ['ml', 'l', 'g', 'kg', 'm', 'm2', 'm3', 'pc'] else None)
-                        if self.settings_shorepos_products_package_size_unit_default == 'odoo'
-                        else self.settings_shorepos_products_package_size_unit_default
-                    ),
+                    'package_size_value': self.shorepos_package_size_value(odoo_product),
+                    'package_size_unit': self.shorepos_package_size_unit(odoo_product),
                     'brand': odoo_product.product_brand_id.name if odoo_product.product_brand_id else None,
                     'supplier': odoo_product.seller_ids[0].name.name if odoo_product.seller_ids else None,
                     'reorder_level': float(odoo_product.reordering_min_qty),
@@ -786,38 +822,14 @@ class ShoreposConnector(models.Model):
                             'product_code': odoo_product_variant.default_code or '',
                             'ean': odoo_product_variant.default_code or '',
                             'gtin': odoo_product_variant.default_code or '',
-                            'price': float(
-                                odoo_product_variant.taxes_id.compute_all(
-                                    price_unit=odoo_product_variant.list_price,
-                                    currency=odoo_product_variant.currency_id,
-                                    quantity=1.0,
-                                    product=odoo_product_variant,
-                                    partner=self.env['res.partner'],
-                                    is_refund=False,
-                                    handle_price_include=True,
-                                    include_caba_tags=False,
-                                    rounding_method=None,
-                                )['total_excluded']
-                            ),
+                            'price': self.shorepos_price_untaxed(odoo_product_variant),
                             'purchase_price': float(odoo_product_variant.standard_price),
                             'tax_type': self.shorepos_tax_rate_create_or_retrieve(odoo_product_variant.taxes_id[0].amount) if odoo_product_variant.taxes_id else None,
                             'quantity': float(odoo_product_variant.qty_available),
                             'attributes': variant_attributes,
                             'images': [{'id': shorepos_image_id, 'new': True}] if shorepos_image_id else None,
-                            'package_size_value': (
-                                float(odoo_product_variant.packaging_ids[0].qty)
-                                if odoo_product_variant.packaging_ids
-                                else 1
-                                if (odoo_product_variant.uom_id and odoo_product_variant.uom_id.name == 'Units') or self.settings_shorepos_products_package_size_unit_default == 'pc'
-                                else None
-                            ),
-                            'package_size_unit': (
-                                'pc'
-                                if odoo_product_variant.uom_id and odoo_product_variant.uom_id.name == 'Units'
-                                else (odoo_product_variant.uom_id.name.lower() if odoo_product_variant.uom_id and odoo_product_variant.uom_id.name.lower() in ['ml', 'l', 'g', 'kg', 'm', 'm2', 'm3', 'pc'] else None)
-                                if self.settings_shorepos_products_package_size_unit_default == 'odoo'
-                                else self.settings_shorepos_products_package_size_unit_default
-                            ),
+                            'package_size_value': self.shorepos_package_size_value(odoo_product_variant),
+                            'package_size_unit': self.shorepos_package_size_unit(odoo_product_variant),
                             'reorder_level': float(odoo_product_variant.reordering_min_qty),
                             'safety_stock': float(odoo_product_variant.reordering_max_qty),
                             'is_giftcard': False,
