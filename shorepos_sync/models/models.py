@@ -70,6 +70,7 @@ class ShoreposSyncLog(models.Model):
     _name = 'shorepos.sync.log'
     _description = 'Shore POS Sync Log'
 
+    shorepos_connection_id = fields.Integer(string='Connection ID', required=True, index=True)
     odoo_shorepos_last_sync = fields.Datetime(string='Sync Date', readonly=True)
 
 
@@ -77,4 +78,5 @@ class ShoreposStockSyncLog(models.Model):
     _name = 'shorepos.stock.sync.log'
     _description = 'Shore POS Stock Sync Log'
 
+    shorepos_connection_id = fields.Integer(string='Connection ID', required=True, index=True)
     odoo_shorepos_last_sync = fields.Datetime(string='Sync Date', readonly=True)
