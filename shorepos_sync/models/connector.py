@@ -15,7 +15,6 @@ import numpy as np
 
 from odoo import _, api, fields, models
 from odoo.addons.queue_job.delay import chain
-from odoo.exceptions import UserError
 from odoo.release import version_info
 
 
@@ -267,10 +266,12 @@ class ShoreposConnector(models.Model):
             response.raise_for_status()
             response_data = response.json()
 
+        except requests.exceptions.HTTPError as error:
+            _logger.error(f'Shore POS token HTTP error {error.response.status_code}: {error.response.text}')
+            return False
         except requests.RequestException as error:
-            error_message = f'Shore POS token retrieval error: {error}'
-            _logger.error(error_message)
-            raise UserError(_(error_message))
+            _logger.error(f'Shore POS token connection error: {error}')
+            return False
 
         api_data = {}
 
@@ -286,7 +287,7 @@ class ShoreposConnector(models.Model):
         if shorepos_access_token:
             api_data['settings_shorepos_access_token'] = shorepos_access_token
 
-        if shorepos_refresh_token_new and shorepos_refresh_token_new != self.settings_shorepos_refresh_token:
+        if shorepos_refresh_token_new:
             api_data['settings_shorepos_refresh_token'] = shorepos_refresh_token_new
 
         if shorepos_refresh_token_new_expiry_date:
@@ -321,6 +322,10 @@ class ShoreposConnector(models.Model):
             headers['Content-Type'] = 'application/json'
 
         response = requests.request(method=method, url=f'{self.settings_shorepos_api_endpoint_url}/{endpoint}/', headers=headers, params=params, data=data, json=json, files=files, timeout=timeout)
+        if response.status_code == 401:
+            if self.shorepos_token_get():
+                headers['Authorization'] = f'Bearer {self.settings_shorepos_access_token}'
+                response = requests.request(method=method, url=f'{self.settings_shorepos_api_endpoint_url}/{endpoint}/', headers=headers, params=params, data=data, json=json, files=files, timeout=timeout)
         response.raise_for_status()
         return response.json()
 
@@ -376,6 +381,9 @@ class ShoreposConnector(models.Model):
                         page += 1
                         time.sleep(0.05)
                         continue
+
+                    else:
+                        break
 
             except HTTPError as error:
                 if error.response.status_code == 429:
@@ -456,8 +464,8 @@ class ShoreposConnector(models.Model):
             return None
 
         try:
-            response = self.shorepos_api_request(method='get', endpoint='categories', params={'limit': 100})
-            shorepos_categories = {category['name']: category['id'] for category in response['data']}
+            shorepos_all_categories = self.shorepos_api_request_all(method='get', endpoint='categories', params={'limit': 100})
+            shorepos_categories = {category['name']: category['id'] for category in shorepos_all_categories}
 
             shorepos_category_id = shorepos_categories.get(odoo_category.name)
 
@@ -483,8 +491,8 @@ class ShoreposConnector(models.Model):
         odoo_tax_rate = Decimal(str(odoo_tax_rate))
 
         try:
-            response = self.shorepos_api_request(method='get', endpoint='taxes')
-            shorepos_tax_rates = {Decimal(tax['tax_rate']): tax['id'] for tax in response}
+            shorepos_all_taxes = self.shorepos_api_request_all(method='get', endpoint='taxes')
+            shorepos_tax_rates = {Decimal(tax['tax_rate']): tax['id'] for tax in shorepos_all_taxes}
 
             shorepos_tax_rate_id = shorepos_tax_rates.get(odoo_tax_rate)
 
@@ -538,7 +546,7 @@ class ShoreposConnector(models.Model):
                     _logger.error(f'Failed to convert Odoo product image from .webp to .png. Error: {error}')
                     return None
 
-            response = self.shorepos_api_request(method='post', endpoint='images', files={'image': (f'product_image{image_file_type.extension}', BytesIO(image), f'{image_file_type.mime}'), 'type': (None, 'product')})
+            response = self.shorepos_api_request(method='post', endpoint='images', files={'image': (f'product_image.{image_file_type.extension}', BytesIO(image), f'{image_file_type.mime}'), 'type': (None, 'product')})
 
             shorepos_image_id = response.get('id')
 
@@ -743,7 +751,14 @@ class ShoreposConnector(models.Model):
         self.ensure_one()
 
         # Odoo search conditions
-        search_conditions = [('sync_to_shorepos', '=', True), ('active', '=', True), ('default_code', '!=', False)]
+        search_conditions = [
+            ('sync_to_shorepos', '=', True),
+            ('active', '=', True),
+            ('default_code', '!=', False),
+            '|',
+            ('shorepos_store_identifier', '=', False),
+            ('shorepos_store_identifier', '=', self.settings_shorepos_store_identifier),
+        ]
 
         if self.settings_shorepos_odoo_to_shorepos_products_language_code:
             search_conditions.append(('product_language_code', '=', self.settings_shorepos_odoo_to_shorepos_products_language_code))
@@ -767,7 +782,10 @@ class ShoreposConnector(models.Model):
                 # Determine categories: check for multi-category field, otherwise use default category
                 categories = []
                 if hasattr(odoo_product, 'categ_ids') and odoo_product.categ_ids:
-                    categories = [{'id': self.shorepos_category_create_or_retrieve(category)} for category in odoo_product.categ_ids if self.shorepos_category_create_or_retrieve(category)]
+                    for category in odoo_product.categ_ids:
+                        cat_id = self.shorepos_category_create_or_retrieve(category)
+                        if cat_id:
+                            categories.append({'id': cat_id})
                 elif odoo_product.categ_id:
                     category_id = self.shorepos_category_create_or_retrieve(odoo_product.categ_id)
                     if category_id:
@@ -795,7 +813,7 @@ class ShoreposConnector(models.Model):
                     'images': [{'id': shorepos_image_id, 'new': True}] if shorepos_image_id else None,
                     'package_size_value': self.shorepos_package_size_value(odoo_product),
                     'package_size_unit': self.shorepos_package_size_unit(odoo_product),
-                    'brand': odoo_product.product_brand_id.name if odoo_product.product_brand_id else None,
+                    'brand': odoo_product.product_brand_id.name if hasattr(odoo_product, 'product_brand_id') and odoo_product.product_brand_id else None,
                     'supplier': odoo_product.seller_ids[0].name.name if odoo_product.seller_ids else None,
                     'reorder_level': float(odoo_product.reordering_min_qty),
                     'safety_stock': float(odoo_product.reordering_max_qty),
