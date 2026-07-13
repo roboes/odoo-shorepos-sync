@@ -6,8 +6,8 @@
     'author': 'roboes',
     'website': 'https://github.com/roboes/odoo-shorepos-sync',
     'category': 'Connectors',
-    'version': '16.0.0.0',
-    # 'version': '18.0.0.0',
+    'version': '16.0.0.1',
+    # 'version': '18.0.0.1',
     'external_dependencies': {
         'python': ['filetype', 'numpy', 'opencv-python-headless'],
     },
