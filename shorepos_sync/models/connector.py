@@ -1,22 +1,20 @@
+import logging
+import time
 from base64 import b64decode
-from datetime import datetime, timedelta, UTC
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from io import BytesIO
-import logging
-import requests
-from requests.exceptions import HTTPError
-import time
 from types import SimpleNamespace
 from typing import Any
 
 import cv2
 import filetype
 import numpy as np
-
+import requests
 from odoo import _, api, fields, models
 from odoo.addons.queue_job.delay import chain
 from odoo.release import version_info
-
+from requests.exceptions import HTTPError
 
 # Settings
 _logger = logging.getLogger(__name__)
@@ -177,7 +175,7 @@ class ShoreposConnector(models.Model):
                     'links': [
                         {
                             'label': _('Open Job Queue'),
-                            'url': '/web#action=%d&model=queue.job&view_type=list' % self.env['ir.actions.act_window'].with_context(lang=False).search([('res_model', '=', 'queue.job')], limit=1).id,
+                            'url': f'/web#action={self.env["ir.actions.act_window"].with_context(lang=False).search([("res_model", "=", "queue.job")], limit=1).id}&model=queue.job&view_type=list',
                         }
                     ],
                     'sticky': False,
@@ -201,9 +199,8 @@ class ShoreposConnector(models.Model):
         self.ensure_one()
 
         # Shore POS access token
-        if not self.settings_shorepos_token_expiry_date or fields.Datetime.now() >= self.settings_shorepos_token_expiry_date:
-            if not self.shorepos_token_get():
-                return
+        if (not self.settings_shorepos_token_expiry_date or fields.Datetime.now() >= self.settings_shorepos_token_expiry_date) and not self.shorepos_token_get():
+            return
 
         queue_jobs_run_in_sequence = []
 
@@ -309,7 +306,7 @@ class ShoreposConnector(models.Model):
         data: Any | None = None,
         json: dict[str, Any] | None = None,
         files: dict[str, Any] | None = None,
-        timeout: int | float = 30,
+        timeout: float = 30,
     ) -> dict[str, Any]:
         self.ensure_one()
 
@@ -322,10 +319,9 @@ class ShoreposConnector(models.Model):
             headers['Content-Type'] = 'application/json'
 
         response = requests.request(method=method, url=f'{self.settings_shorepos_api_endpoint_url}/{endpoint}/', headers=headers, params=params, data=data, json=json, files=files, timeout=timeout)
-        if response.status_code == 401:
-            if self.shorepos_token_get():
-                headers['Authorization'] = f'Bearer {self.settings_shorepos_access_token}'
-                response = requests.request(method=method, url=f'{self.settings_shorepos_api_endpoint_url}/{endpoint}/', headers=headers, params=params, data=data, json=json, files=files, timeout=timeout)
+        if response.status_code == 401 and self.shorepos_token_get():
+            headers['Authorization'] = f'Bearer {self.settings_shorepos_access_token}'
+            response = requests.request(method=method, url=f'{self.settings_shorepos_api_endpoint_url}/{endpoint}/', headers=headers, params=params, data=data, json=json, files=files, timeout=timeout)
         response.raise_for_status()
         return response.json()
 
@@ -338,7 +334,7 @@ class ShoreposConnector(models.Model):
         data: Any | None = None,
         json: dict[str, Any] | None = None,
         files: dict[str, Any] | None = None,
-        timeout: int | float = 30,
+        timeout: float = 30,
     ) -> list[dict[str, Any]]:
         self.ensure_one()
 
@@ -480,7 +476,7 @@ class ShoreposConnector(models.Model):
             _logger.error(f'Failed to create or retrieve Odoo category in Shore POS: {odoo_category}: {error}')
             return None
 
-    def shorepos_tax_rate_create_or_retrieve(self: models.Model, odoo_tax_rate: float | int) -> int | None:
+    def shorepos_tax_rate_create_or_retrieve(self: models.Model, odoo_tax_rate: float) -> int | None:
         """Create or retrieve an Shore POS tax rate."""
 
         self.ensure_one()
@@ -629,7 +625,7 @@ class ShoreposConnector(models.Model):
             stock_payload = {
                 'stock': {
                     'quantity': str(odoo_product.qty_available - shorepos_stock_quantity),
-                    'date': datetime.now().strftime('%d.%m.%Y'),
+                    'date': fields.Datetime.now().strftime('%d.%m.%Y'),
                 }
             }
 
@@ -742,9 +738,9 @@ class ShoreposConnector(models.Model):
                     # If it's already gone from Shore POS, just clear the Shore POS fields in Odoo
                     odoo_product.write({'shorepos_store_identifier': False, 'shorepos_id': False, 'odoo_to_shorepos_last_sync': False, 'shorepos_stock_last_sync': False})
                 else:
-                    _logger.exception(f'HTTPError while deleting Odoo product from Shore POS: {odoo_product.name} (Odoo product ID: {odoo_product.id}, Shore POS product ID: {odoo_product["shorepos_id"]}): {error}')
-            except Exception as error:
-                _logger.exception(f'Error while deleting Odoo product from Shore POS: {odoo_product.name} (Odoo product ID: {odoo_product.id}, Shore POS product ID: {odoo_product["shorepos_id"]}): {error}')
+                    _logger.exception(f'HTTPError while deleting Odoo product from Shore POS: {odoo_product.name} (Odoo product ID: {odoo_product.id}, Shore POS product ID: {odoo_product["shorepos_id"]})')
+            except Exception:
+                _logger.exception(f'Error while deleting Odoo product from Shore POS: {odoo_product.name} (Odoo product ID: {odoo_product.id}, Shore POS product ID: {odoo_product["shorepos_id"]})')
 
     @api.model
     def odoo_to_shorepos_products_sync(self: models.Model) -> None:
@@ -875,7 +871,7 @@ class ShoreposConnector(models.Model):
                             response = self.shorepos_api_request(method='post', endpoint='products', json=product_values)
                             _logger.info(f'Imported Odoo product into Shore POS: {odoo_product.name} (Odoo product ID: {odoo_product.id}, Shore POS product ID: {response.get("id")}). Shore POS response: {response}')
                         else:
-                            raise error
+                            raise
 
                 else:
                     response = self.shorepos_api_request(method='post', endpoint='products', json=product_values)
@@ -897,8 +893,8 @@ class ShoreposConnector(models.Model):
                         if shorepos_variant and shorepos_variant.get('id'):
                             odoo_product_variant.write({'shorepos_store_identifier': self.settings_shorepos_store_identifier, 'shorepos_id': shorepos_variant['id'], 'odoo_to_shorepos_last_sync': fields.Datetime.now()})
 
-            except requests.exceptions.HTTPError as error:
-                _logger.exception(f'HTTPError syncing product {odoo_product.id} to Shore POS: {error}')
+            except requests.exceptions.HTTPError:
+                _logger.exception(f'HTTPError syncing product {odoo_product.id} to Shore POS')
 
-            except Exception as error:
-                _logger.exception(f'Error syncing product {odoo_product.id} to Shore POS: {error}')
+            except Exception:
+                _logger.exception(f'Error syncing product {odoo_product.id} to Shore POS')
