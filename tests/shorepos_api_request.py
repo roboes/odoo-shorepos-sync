@@ -4,12 +4,12 @@
 # Token is valid for 10 hours
 
 # Import packages
-from datetime import datetime, timedelta
+import time
+from datetime import datetime, timedelta, timezone
 
 import pandas as pd
 import requests
 from requests.exceptions import HTTPError
-import time
 
 # Settings
 settings_shorepos_api_endpoint_url = 'https://app.inventorum.com/api'
@@ -52,7 +52,7 @@ def shorepos_token_get():
         return False
 
     if shorepos_access_token:
-        print(datetime.now() + timedelta(seconds=shorepos_refresh_token_new_expiry_date))
+        print(datetime.now(tz=timezone.utc) + timedelta(seconds=shorepos_refresh_token_new_expiry_date))
         return shorepos_access_token
 
 
