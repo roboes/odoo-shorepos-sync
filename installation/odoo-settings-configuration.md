@@ -5,7 +5,7 @@
 
 ## Settings
 
-```.sh
+```sh
 website="website.com"
 website_root_path="/var/www/vhosts/$website/httpdocs"
 odoo_conf="/etc/odoo.conf"
@@ -13,13 +13,13 @@ odoo_conf="/etc/odoo.conf"
 
 ## Start Odoo command line
 
-```.sh
+```sh
 $website_root_path/odoo/venv/bin/python3 $website_root_path/odoo/odoo-bin shell --config=$odoo_conf
 ```
 
 ## Settings
 
-```.py
+```py
 settings_username = 'admin'
 settings_account_fiscal_localization_module = 'l10n_de'
 settings_account_fiscal_localization_template = 'Germany SKR04 - Accounting'
@@ -27,7 +27,7 @@ settings_account_fiscal_localization_template = 'Germany SKR04 - Accounting'
 
 ## Install modules
 
-```.py
+```py
 # Install "delivery" module if not installed
 delivery_module = env['ir.module.module'].search([('name', '=', 'delivery')], limit=1)
 if delivery_module:
@@ -63,7 +63,7 @@ else:
 
 ## Odoo settings configuration
 
-```.py
+```py
 odoo_user = env['res.users'].search([('login', '=', settings_username)], limit=1)
 
 if odoo_user:
@@ -102,6 +102,6 @@ else:
     print(f'User not found: {settings_username}')
 ```
 
-```.py
+```py
 exit()
 ```

@@ -5,7 +5,7 @@
 
 ## Settings
 
-```.sh
+```sh
 website="website.com"
 website_root_path="/home/$website/public_html"
 system_user=""
@@ -20,7 +20,7 @@ addons_path="$website_root_path/odoo/addons"
 
 ### Clone repositories
 
-```.sh
+```sh
 # Repositories to clone
 declare -A repos=(
   ["odoo-shorepos-sync"]="https://github.com/roboes/odoo-shorepos-sync.git"
@@ -77,7 +77,7 @@ done
 
 ### Install Python dependencies
 
-```.sh
+```sh
 # Change current directory
 cd "$website_root_path/odoo"
 
@@ -94,7 +94,7 @@ find "$addons_path" -name "requirements.txt" -exec python -m pip install -r {} \
 
 ### Odoo Config
 
-```.sh
+```sh
 # Update odoo.conf with addons path
 # if grep -q "^addons_path" "$odoo_conf"; then
   # sed -i "s|^addons_path.*|addons_path = $addons_path|" "$odoo_conf"
@@ -109,7 +109,7 @@ find "$addons_path" -name "requirements.txt" -exec python -m pip install -r {} \
 
 ### Update base modules
 
-```.sh
+```sh
 echo "Updating base module list..."
 $website_root_path/odoo/venv/bin/python3 $website_root_path/odoo/odoo-bin \
     --config=$odoo_conf \
